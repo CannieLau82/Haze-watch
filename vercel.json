@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/api/nea/:path*", "destination": "https://api-open.data.gov.sg/v2/real-time/api/:path*" }
+  ],
+  "headers": [
+    {
+      "source": "/api/nea/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, s-maxage=300, stale-while-revalidate=600" }]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ]
+}

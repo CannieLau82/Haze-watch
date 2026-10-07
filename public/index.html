@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Haze Watch SG</title>
+<meta name="description" content="Live haze (NEA PSI by region) and weather for Singapore and ASEAN cities.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%2712%27 fill=%27%23C8742A%27/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one calm column of cards — summary row, map + region list, hourly strip, ASEAN city grid. */
+:root{
+  --bg:#F5F6F7; --surface:#FFFFFF; --ink:#1B2228; --muted:#6A747D; --line:#E4E8EB; --water:#EEF2F4;
+  --accent:#C8742A; --accent-soft:#FAEBDC;
+  --good:#2F9E7A; --moderate:#C9A632; --unhealthy:#E05A3A; --vunhealthy:#A8375A; --hazardous:#6B2B3D; --na:#A9B2B9;
+  --f-display:"Sora", "Segoe UI", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r:18px; --gap:20px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#111518; --surface:#1A1F24; --ink:#E7EBEE; --muted:#97A1A9; --line:#2A3138; --water:#161B1F;
+  --accent:#EE9D52; --accent-soft:#3A2817; --na:#5C666E; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#111518; --surface:#1A1F24; --ink:#E7EBEE; --muted:#97A1A9; --line:#2A3138; --water:#161B1F;
+  --accent:#EE9D52; --accent-soft:#3A2817; --na:#5C666E; color-scheme:dark;}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-body);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:clamp(16px,4vw,40px);padding-block:36px 64px;display:grid;gap:var(--gap)}
+h1,h2,h3{font-family:var(--f-display);font-weight:500;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:clamp(1.6rem,3.2vw,2.1rem)}
+h2{font-size:1.15rem}
+.eyebrow{font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:clamp(18px,2.4vw,28px);min-width:0}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* header */
+header{display:flex;flex-wrap:wrap;gap:16px 24px;align-items:flex-end;justify-content:space-between;padding-bottom:8px}
+.brand{display:grid;gap:6px}
+.brand h1 span{color:var(--accent)}
+.hdr-right{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.src{display:inline-flex;align-items:center;gap:7px;font-size:.78rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 11px;background:var(--surface)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--na)}
+.dot.live{background:var(--good)} .dot.sample{background:var(--moderate)} .dot.loading{background:var(--na);animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.3}}
+.btn{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:999px;padding:7px 16px;font-weight:500;cursor:pointer;font-size:.85rem}
+.btn:hover{filter:brightness(1.05)}
+.btn[disabled]{opacity:.6;cursor:progress}
+.notice{border-radius:12px;padding:12px 16px;background:var(--accent-soft);font-size:.88rem}
+
+/* summary */
+.summary{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:var(--gap)}
+.big{font-family:var(--f-display);font-size:clamp(2.4rem,5vw,3.2rem);font-weight:500;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:.78rem;font-weight:600;white-space:nowrap;
+  background:color-mix(in srgb,var(--c,var(--na)) 16%,var(--surface));color:color-mix(in srgb,var(--c,var(--na)) 78%,var(--ink))}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--c,var(--na))}
+.stack{display:grid;gap:12px;align-content:start}
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px;margin-top:4px}
+.kv div{display:grid;gap:1px}
+.kv b{font-weight:500;font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:1rem}
+.advice{display:grid;gap:10px;font-size:.92rem}
+.advice p{margin:0}
+.advice strong{font-weight:600}
+
+/* map */
+.map-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+.map-card{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:24px;margin-top:18px}
+.map-box{--mbg:#0D1418;--mbox:#111B20;--mink:#EAF0F2;--mmuted:#8D9BA4;border-radius:16px;background:var(--mbg);border:1px solid var(--line);overflow:hidden}
+svg.map{display:block;width:100%;height:auto}
+.map .geo{font:500 13px var(--f-mono);letter-spacing:.16em;fill:var(--mmuted)}
+.map .land-r{stroke:var(--mbg);stroke-width:3;cursor:pointer;transition:opacity .2s}
+.map .land-r:hover{opacity:.85}
+.map .ptag{cursor:pointer}
+.map .ptag:focus{outline:none}
+.map .ptag .box{fill:var(--mbox);stroke-width:2.5}
+.map .ptag:focus-visible .box{stroke-width:4.5}
+.map .ptag .n{font:600 13px var(--f-mono);letter-spacing:.12em;fill:var(--mink)}
+.map .ptag .v{font:600 34px var(--f-display);fill:var(--mink);font-variant-numeric:tabular-nums}
+.map .ptag .b{font:14px var(--f-body);fill:var(--mink);opacity:.85}
+.map .ring{fill:none;stroke:var(--accent);stroke-width:2.5}
+.map .leader{stroke:var(--mmuted);stroke-dasharray:3 4;stroke-width:1.5}
+.map .pin{fill:var(--mmuted)}
+.zone{border:1px solid var(--line);border-radius:16px;padding:clamp(18px,2.4vw,26px);display:grid;gap:18px;align-content:start;min-width:0}
+.zone-num{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+.zone .big2{font:600 clamp(3.4rem,7vw,5rem)/1 var(--f-display);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.bandname{display:inline-flex;align-items:center;gap:8px;font:600 1.3rem var(--f-display)}
+.bandname::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--c)}
+.scale{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;align-items:center;height:20px}
+.scale i{height:10px;border-radius:3px;background:color-mix(in srgb,var(--c) 28%,var(--surface))}
+.scale i.on{height:20px;background:var(--c)}
+.scale-lbl{position:relative;height:16px;font:12px var(--f-mono);color:var(--muted);margin-top:-8px}
+.scale-lbl span{position:absolute;top:0;transform:translateX(-50%)}
+.scale-lbl span:first-child{transform:none}
+.scale-lbl span:last-child{transform:none;right:0;left:auto!important}
+.zone p{margin:0;font-size:1rem}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}
+.grid2 div{border-top:1px solid var(--line);padding:12px 0 6px;display:grid;gap:2px}
+.grid2 b{font:500 1.2rem var(--f-mono);font-variant-numeric:tabular-nums}
+.legend{display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:18px;font-size:.95rem}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.legend i{width:14px;height:14px;border-radius:3px;background:var(--c)}
+.map-note{font-size:.88rem;color:var(--muted);margin:10px 0 0}
+
+/* hourly */
+.hours{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(74px,1fr);gap:10px;overflow-x:auto;padding-bottom:4px;margin-top:16px}
+.hour{display:grid;gap:4px;justify-items:center;padding:12px 6px;border-radius:12px;background:var(--bg);font-size:.82rem}
+.hour .t{color:var(--muted);font-family:var(--f-mono)}
+.hour .temp{font-family:var(--f-display);font-size:1.15rem}
+.hour .rain{font-family:var(--f-mono);font-size:.75rem;color:var(--muted)}
+.rainbar{width:100%;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.rainbar i{display:block;height:100%;background:var(--accent);opacity:.8}
+
+/* asean */
+.asean-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 13px;font-size:.82rem;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:500}
+.cities{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:var(--gap)}
+.city{display:grid;gap:14px;align-content:start}
+.city-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.city h3{font-size:1.08rem}
+.city .temp{font-family:var(--f-display);font-size:2.1rem;line-height:1;font-variant-numeric:tabular-nums}
+.city .row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.city .meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;font-size:.78rem;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+.city .meta b{display:block;color:var(--ink);font-weight:500;font-family:var(--f-mono);font-size:.88rem}
+.tag{font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);font-weight:600}
+footer{font-size:.8rem;color:var(--muted);display:grid;gap:6px;padding-top:8px}
+footer a{color:inherit}
+
+@media (max-width:900px){.summary{grid-template-columns:1fr 1fr}.summary>:first-child{grid-column:1/-1}.map-card{grid-template-columns:1fr}}
+@media (max-width:560px){.summary{grid-template-columns:1fr}.kv{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">
+    <span class="eyebrow">Singapore · ASEAN air &amp; weather</span>
+    <h1>Haze Watch <span>SG</span></h1>
+  </div>
+  <div class="hdr-right">
+    <span class="src" id="src-nea"><i class="dot loading"></i>NEA PSI</span>
+    <span class="src" id="src-om"><i class="dot loading"></i>Open-Meteo weather</span>
+    <button class="btn" id="refresh" type="button">Refresh</button>
+  </div>
+</header>
+
+<div class="notice" id="notice" hidden></div>
+
+<section class="summary">
+  <div class="card stack">
+    <span class="eyebrow">National 24-hr PSI</span>
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
+      <span class="big" id="nat-psi">–</span>
+      <span class="pill" id="nat-band">Loading</span>
+    </div>
+    <span class="muted" style="font-size:.85rem" id="nat-sub">Waiting for NEA readings…</span>
+    <div class="kv">
+      <div><span class="eyebrow">PM2.5 1-hr (max)</span><b id="nat-pm1">–</b></div>
+      <div><span class="eyebrow">PM2.5 band</span><b id="nat-pmband">–</b></div>
+    </div>
+  </div>
+  <div class="card stack">
+    <span class="eyebrow">Singapore weather now</span>
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <span class="big" id="sg-temp">–</span>
+      <span class="muted" id="sg-cond">–</span>
+    </div>
+    <div class="kv">
+      <div><span class="eyebrow">Feels like</span><b id="sg-feel">–</b></div>
+      <div><span class="eyebrow">Humidity</span><b id="sg-hum">–</b></div>
+      <div><span class="eyebrow">Wind</span><b id="sg-wind">–</b></div>
+      <div><span class="eyebrow">Visibility</span><b id="sg-vis">–</b></div>
+    </div>
+  </div>
+  <div class="card advice">
+    <span class="eyebrow">Health advisory</span>
+    <p id="adv-healthy"><strong>Healthy persons:</strong> –</p>
+    <p id="adv-vuln"><strong>Elderly, children, pregnant women and people with chronic lung or heart disease:</strong> –</p>
+    <p class="muted" style="font-size:.78rem">Based on NEA guidance for the highest regional 24-hr PSI.</p>
+  </div>
+</section>
+
+<section class="card">
+  <div class="map-head">
+    <div><span class="eyebrow">Singapore · NEA 24-hour PSI</span><h2>PSI by area</h2></div>
+  </div>
+  <div class="map-card">
+    <div class="map-box"><svg class="map" id="map" viewBox="0 0 960 680" role="img" aria-label="Map of Singapore showing 24-hour PSI for North, South, East, West and Central"></svg></div>
+    <div class="zone" id="detail"></div>
+  </div>
+  <div class="legend" id="legend"></div>
+  <p class="map-note" id="map-note">Waiting for NEA readings…</p>
+</section>
+
+<section class="card">
+  <div class="map-head" style="margin:0">
+    <div><span class="eyebrow">Singapore · next 12 hours</span><h2>Hourly outlook</h2></div>
+    <span class="muted" style="font-size:.8rem">Bar shows chance of rain</span>
+  </div>
+  <div class="hours" id="hours"></div>
+</section>
+
+<section class="stack" style="gap:var(--gap)">
+  <div class="asean-head">
+    <div><span class="eyebrow">Across the region · weather</span><h2>ASEAN cities</h2></div>
+    <div class="chips" role="group" aria-label="Filter cities">
+      <button class="chip" type="button" data-f="all" aria-pressed="true">All cities</button>
+      <button class="chip" type="button" data-f="capital" aria-pressed="false">Capitals</button>
+      <button class="chip" type="button" data-f="haze" aria-pressed="false">Haze corridor</button>
+    </div>
+  </div>
+  <div class="cities" id="cities"></div>
+</section>
+
+<footer>
+  <span>Haze data (PSI, PM2.5 and other pollutants) comes only from the National Environment Agency via <a href="https://data.gov.sg" target="_blank" rel="noopener">data.gov.sg</a>, which covers Singapore. Weather for all cities comes from <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>.</span>
+  <span id="foot-time">Refreshes every 10 minutes.</span>
+</footer>
+</div>
+
+<script>
+(() => {
+const REGIONS = ["north","west","central","east","south"];
+const REGION_NAMES = {north:"North",south:"South",east:"East",west:"West",central:"Central"};
+const REGION_PTS = {north:[1.418,103.82],west:[1.35,103.70],central:[1.355,103.835],east:[1.35,103.94],south:[1.29,103.82]};
+
+const CITIES = [
+  {id:"sg",  name:"Singapore",        country:"Singapore",   lat:1.3521,  lon:103.8198, tags:["capital","haze"]},
+  {id:"kl",  name:"Kuala Lumpur",     country:"Malaysia",    lat:3.1390,  lon:101.6869, tags:["capital","haze"]},
+  {id:"jkt", name:"Jakarta",          country:"Indonesia",   lat:-6.2088, lon:106.8456, tags:["capital"]},
+  {id:"mnl", name:"Manila",           country:"Philippines", lat:14.5995, lon:120.9842, tags:["capital"]},
+  {id:"bkk", name:"Bangkok",          country:"Thailand",    lat:13.7563, lon:100.5018, tags:["capital"]},
+  {id:"hcm", name:"Ho Chi Minh City", country:"Vietnam",     lat:10.8231, lon:106.6297, tags:[]},
+  {id:"han", name:"Hanoi",            country:"Vietnam",     lat:21.0278, lon:105.8342, tags:["capital"]},
+  {id:"pnh", name:"Phnom Penh",       country:"Cambodia",    lat:11.5564, lon:104.9282, tags:["capital"]},
+  {id:"vte", name:"Vientiane",        country:"Laos",        lat:17.9757, lon:102.6331, tags:["capital"]},
+  {id:"ygn", name:"Yangon",           country:"Myanmar",     lat:16.8409, lon:96.1735,  tags:[]},
+  {id:"bwn", name:"Bandar Seri Begawan", country:"Brunei",   lat:4.9031,  lon:114.9398, tags:["capital","haze"]},
+  {id:"jb",  name:"Johor Bahru",      country:"Malaysia",    lat:1.4927,  lon:103.7414, tags:["haze"]},
+  {id:"pku", name:"Pekanbaru",        country:"Indonesia · Riau", lat:0.5071, lon:101.4478, tags:["haze"], hot:true},
+  {id:"plm", name:"Palembang",        country:"Indonesia · South Sumatra", lat:-2.9761, lon:104.7754, tags:["haze"], hot:true},
+  {id:"pnk", name:"Pontianak",        country:"Indonesia · West Kalimantan", lat:-0.0263, lon:109.3425, tags:["haze"], hot:true},
+  {id:"kch", name:"Kuching",          country:"Malaysia · Sarawak", lat:1.5533, lon:110.3592, tags:["haze"]},
+];
+
+
+const PSI_BANDS = [
+  {max:50,  name:"Good", c:"--good"},
+  {max:100, name:"Moderate", c:"--moderate"},
+  {max:200, name:"Unhealthy", c:"--unhealthy"},
+  {max:300, name:"Very unhealthy", c:"--vunhealthy"},
+  {max:Infinity, name:"Hazardous", c:"--hazardous"},
+];
+const ADVICE = {
+  "Good":["Normal activities.","Normal activities."],
+  "Moderate":["Normal activities.","Normal activities."],
+  "Unhealthy":["Reduce prolonged or strenuous outdoor physical exertion.","Minimise prolonged or strenuous outdoor physical exertion."],
+  "Very unhealthy":["Avoid prolonged or strenuous outdoor physical exertion.","Minimise outdoor activity."],
+  "Hazardous":["Minimise outdoor activity.","Avoid outdoor activity."],
+};
+const WMO = {0:"Clear",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",48:"Rime fog",51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",56:"Freezing drizzle",57:"Freezing drizzle",61:"Light rain",63:"Rain",65:"Heavy rain",66:"Freezing rain",67:"Freezing rain",71:"Light snow",73:"Snow",75:"Heavy snow",77:"Snow grains",80:"Light showers",81:"Showers",82:"Heavy showers",85:"Snow showers",86:"Snow showers",95:"Thunderstorm",96:"Thunderstorm, hail",99:"Thunderstorm, hail"};
+
+const band = (v, bands) => v == null || isNaN(v) ? {name:"No data", c:"--na"} : bands.find(b => v <= b.max);
+const pm25Band = v => v == null ? "–" : v <= 55 ? "Band I · Normal" : v <= 150 ? "Band II · Elevated" : v <= 250 ? "Band III · High" : "Band IV · Very high";
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = id => document.getElementById(id);
+const fmt = (v, d=0) => v == null || isNaN(v) ? "–" : Number(v).toFixed(d);
+const compass = deg => deg == null ? "" : ["N","NE","E","SE","S","SW","W","NW"][Math.round(deg/45)%8];
+const pill = (el, b) => { el.textContent = b.name; el.style.setProperty("--c", `var(${b.c})`); };
+
+const state = { psi:null, psiTime:null, pmTime:null, nea:"loading", om:"loading", weather:null, sgHourly:null, selected:null, filter:"all" };
+
+async function getJSON(url, ms=15000){
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(url, {signal:ctl.signal}); if(!r.ok) throw new Error(r.status); return await r.json(); }
+  finally { clearTimeout(t); }
+}
+
+async function loadNEA(){
+  const out = {};
+  const psi = await getJSON("/api/nea/psi");
+  const item = psi?.data?.items?.[0]; if(!item) throw new Error("no PSI item");
+  const r = item.readings;
+  out.psi = r.psi_twenty_four_hourly; out.pm24 = r.pm25_twenty_four_hourly; out.pm10 = r.pm10_twenty_four_hourly;
+  out.o3 = r.o3_eight_hour_max; out.so2 = r.so2_twenty_four_hourly; out.co = r.co_eight_hour_max; out.no2 = r.no2_one_hour_max;
+  out.time = item.updatedTimestamp || item.timestamp; out.readAt = item.timestamp;
+  out.sub = {"PM2.5":r.pm25_sub_index, "PM10":r.pm10_sub_index, "Ozone (O₃)":r.o3_sub_index, "SO₂":r.so2_sub_index, "CO":r.co_sub_index};
+  try {
+    const pm = await getJSON("/api/nea/pm25");
+    const pi = pm?.data?.items?.[0];
+    out.pm1 = pi?.readings?.pm25_one_hourly; out.pmTime = pi?.updatedTimestamp || pi?.timestamp;
+  } catch(e){ out.pm1 = null; }
+  return out;
+}
+
+async function loadOpenMeteo(){
+  const lat = CITIES.map(c=>c.lat).join(","), lon = CITIES.map(c=>c.lon).join(",");
+  const [w, h] = await Promise.all([
+    getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,visibility&timezone=auto`),
+    getJSON(`https://api.open-meteo.com/v1/forecast?latitude=1.3521&longitude=103.8198&hourly=temperature_2m,precipitation_probability,weather_code&forecast_hours=12&timezone=Asia%2FSingapore`),
+  ]);
+  return { weather: Array.isArray(w) ? w : [w], hourly: h.hourly };
+}
+
+
+/* ---------- map ---------- */
+const X = lon => (lon - 103.58) * 2000, Y = lat => (1.50 - lat) * 2000;
+const pts = arr => arr.map(([lo,la]) => `${X(lo).toFixed(1)},${Y(la).toFixed(1)}`).join(" ");
+const ISLAND = [[103.655,1.425],[103.69,1.445],[103.725,1.452],[103.76,1.449],[103.79,1.452],[103.815,1.468],[103.84,1.466],[103.865,1.452],[103.885,1.432],[103.905,1.418],[103.93,1.405],[103.955,1.393],[103.98,1.39],[104.005,1.385],[104.03,1.365],[104.025,1.343],[104.0,1.33],[103.97,1.315],[103.935,1.303],[103.9,1.298],[103.875,1.287],[103.862,1.274],[103.845,1.265],[103.825,1.266],[103.805,1.272],[103.78,1.283],[103.755,1.293],[103.725,1.3],[103.695,1.302],[103.665,1.298],[103.635,1.305],[103.618,1.325],[103.628,1.35],[103.64,1.375],[103.648,1.4]];
+const SENTOSA = [[103.81,1.252],[103.83,1.257],[103.845,1.25],[103.83,1.242],[103.812,1.245]];
+// Approximate NEA reporting regions: west | (north / central / south) | east
+const XW = 103.758, XE = 103.914, YN = 1.386, YS = 1.309;
+const RPOLY = {
+  west:[[103.58,1.16],[XW,1.16],[XW,1.50],[103.58,1.50]],
+  east:[[XE,1.16],[104.06,1.16],[104.06,1.50],[XE,1.50]],
+  north:[[XW,YN],[XE,YN],[XE,1.50],[XW,1.50]],
+  central:[[XW,YS],[XE,YS],[XE,YN],[XW,YN]],
+  south:[[XW,1.16],[XE,1.16],[XE,YS],[XW,YS]],
+};
+const TAG = {west:[103.69,1.345], north:[103.836,1.432], central:[103.836,1.345], east:[103.962,1.345], south:[103.836,1.203]};
+const SOUTH_PIN = [103.836,1.287];
+const AREAS = {north:"e.g. Woodlands, Yishun, Sembawang", south:"e.g. Bukit Merah, Telok Blangah, Sentosa", east:"e.g. Tampines, Bedok, Changi", west:"e.g. Jurong, Clementi, Choa Chu Kang", central:"e.g. Toa Payoh, Bishan, Orchard"};
+const ZONE_ADVICE = {
+  "Good":"Air quality is good. Carry on with normal outdoor activities.",
+  "Moderate":"Normal activities for everyone. Unusually sensitive people may want to take it easier outdoors.",
+  "Unhealthy":"Cut back on long or strenuous outdoor activity. Children, older adults and people with heart or lung conditions should stay indoors more.",
+  "Very unhealthy":"Avoid long or strenuous outdoor activity. Children, older adults and people with heart or lung conditions should keep outdoor activity to a minimum.",
+  "Hazardous":"Keep outdoor activity to a minimum. Children, older adults and people with heart or lung conditions should avoid going outdoors.",
+  "No data":"No reading is available for this area right now."
+};
+const fillFor = c => `color-mix(in srgb, var(${c}) 42%, var(--mbg))`;
+
+function drawMap(){
+  const svg = $("map"); const p = state.psi;
+  let g = `<defs><clipPath id="land"><polygon points="${pts(ISLAND)}"/><polygon points="${pts(SENTOSA)}"/></clipPath></defs>`;
+  g += `<text class="geo" x="480" y="36" text-anchor="middle">JOHOR, MALAYSIA</text>`;
+  g += `<text class="geo" x="24" y="660">SINGAPORE STRAIT</text>`;
+  g += `<g clip-path="url(#land)">`;
+  REGIONS.forEach(r=>{
+    const b = band(p?.[r], PSI_BANDS);
+    g += `<polygon class="land-r" data-r="${r}" points="${pts(RPOLY[r])}" style="fill:${fillFor(b.c)}"><title>${REGION_NAMES[r]} · PSI ${fmt(p?.[r])} (${b.name})</title></polygon>`;
+  });
+  g += `</g>`;
+  // South tag sits offshore with a leader line to the region
+  const [plo,pla] = SOUTH_PIN, [slo,sla] = TAG.south;
+  g += `<line class="leader" x1="${X(plo)}" y1="${Y(pla)}" x2="${X(slo)}" y2="${Y(sla)-48}"/><circle class="pin" cx="${X(plo)}" cy="${Y(pla)}" r="5"/>`;
+  REGIONS.forEach(r=>{
+    const v = p?.[r], b = band(v, PSI_BANDS), cx = X(TAG[r][0]), cy = Y(TAG[r][1]);
+    const w = 150, h = 96, x = cx - w/2, y = cy - h/2, sel = state.selected === r;
+    g += `<g class="ptag" data-r="${r}" tabindex="0" role="button" aria-pressed="${sel}" aria-label="${REGION_NAMES[r]}: PSI ${fmt(v)}, ${b.name}">
+      ${sel ? `<rect class="ring" x="${x-7}" y="${y-7}" width="${w+14}" height="${h+14}" rx="15"/>` : ""}
+      <rect class="box" x="${x}" y="${y}" width="${w}" height="${h}" rx="10" style="stroke:var(${b.c})"/>
+      <text class="n" x="${cx}" y="${cy-23}" text-anchor="middle">${REGION_NAMES[r].toUpperCase()}</text>
+      <text class="v" x="${cx}" y="${cy+13}" text-anchor="middle">${fmt(v)}</text>
+      <text class="b" x="${cx}" y="${cy+36}" text-anchor="middle">${b.name}</text></g>`;
+  });
+  svg.innerHTML = g;
+  svg.querySelectorAll("[data-r]").forEach(el=>{
+    const pick = () => select(el.dataset.r);
+    el.addEventListener("click", pick);
+    el.addEventListener("keydown", e => { if(e.key==="Enter"||e.key===" "){ e.preventDefault(); pick(); } });
+  });
+}
+
+function select(r){ state.selected = r; drawMap(); drawRegions(); }
+
+function drawRegions(){
+  const p = state.psi, d = state.neaData || {}; const r = state.selected;
+  if(!r){ $("detail").innerHTML = ""; return; }
+  const v = p?.[r], b = band(v, PSI_BANDS), idx = PSI_BANDS.indexOf(b);
+  let main = "–";
+  if(d.sub){ let best = -1; for(const [k,vals] of Object.entries(d.sub)){ const x = vals?.[r]; if(x!=null && x>best){ best = x; main = k; } } }
+  const unit = " µg/m³";
+  $("detail").innerHTML = `
+    <span class="eyebrow">${REGION_NAMES[r]} · ${AREAS[r]}</span>
+    <div class="zone-num"><span class="big2">${fmt(v)}</span><span class="bandname" style="--c:var(${b.c})">${b.name}</span></div>
+    <div>
+      <div class="scale">${PSI_BANDS.map((x,i)=>`<i class="${i===idx?"on":""}" style="--c:var(${x.c})"></i>`).join("")}</div>
+      <div class="scale-lbl"><span style="left:0">0</span><span style="left:20%">50</span><span style="left:40%">100</span><span style="left:60%">200</span><span style="left:80%">300</span><span>301+</span></div>
+    </div>
+    <p>${ZONE_ADVICE[b.name]}</p>
+    <div class="grid2">
+      <div><span class="eyebrow">PM2.5, 24 h</span><b>${d.pm24?.[r]!=null ? fmt(d.pm24[r])+unit : "–"}</b></div>
+      <div><span class="eyebrow">PM10, 24 h</span><b>${d.pm10?.[r]!=null ? fmt(d.pm10[r])+unit : "–"}</b></div>
+      <div><span class="eyebrow">Main pollutant</span><b>${main}</b></div>
+      <div><span class="eyebrow">PM2.5, 1 h</span><b>${d.pm1?.[r]!=null ? fmt(d.pm1[r])+unit : "–"}</b></div>
+    </div>`;
+}
+
+function drawLegend(){
+  const items = [["Good 0–50","--good"],["Moderate 51–100","--moderate"],["Unhealthy 101–200","--unhealthy"],["Very unhealthy 201–300","--vunhealthy"],["Hazardous 301+","--hazardous"]];
+  $("legend").innerHTML = items.map(([t,c])=>`<span><i style="--c:var(${c})"></i>${t}</span>`).join("");
+}
+
+const hhmm = iso => { const d = new Date(iso); return isNaN(d) ? "–" : d.toLocaleTimeString("en-GB",{timeZone:"Asia/Singapore",hour:"2-digit",minute:"2-digit"}); };
+function drawMapNote(){
+  const d = state.neaData || {};
+  const tail = "Area boundaries are approximate. PSI is a 24-hour measure and NEA updates it every hour. Tap an area for details.";
+  $("map-note").textContent = state.neaMode === "error"
+    ? `NEA readings are unavailable right now. ${tail}`
+    : `Reading for ${hhmm(d.readAt || d.time)} SGT, updated ${hhmm(d.time)}. ${tail}`;
+}
+
+function timeLabel(iso){
+  if(!iso) return "–";
+  const d = new Date(iso); if(isNaN(d)) return iso;
+  return d.toLocaleString("en-SG",{timeZone:"Asia/Singapore",weekday:"short",day:"numeric",month:"short",hour:"numeric",minute:"2-digit"}) + " SGT";
+}
+
+function drawSummary(){
+  const p = state.psi, d = state.neaData || {};
+  const vals = REGIONS.map(r=>p?.[r]).filter(v=>v!=null);
+  const max = vals.length ? Math.max(...vals) : null, min = vals.length ? Math.min(...vals) : null;
+  const b = band(max, PSI_BANDS);
+  $("nat-psi").textContent = max==null ? "–" : (min===max ? `${max}` : `${min}–${max}`);
+  pill($("nat-band"), b);
+  $("nat-sub").textContent = state.neaMode === "error" ? "NEA readings are unavailable right now." : `Range across five regions · updated ${timeLabel(d.time)}`;
+  const pm = d.pm1 ? Math.max(...REGIONS.map(r=>d.pm1[r]).filter(v=>v!=null)) : null;
+  $("nat-pm1").textContent = pm==null||!isFinite(pm) ? "–" : `${fmt(pm)} µg/m³`;
+  $("nat-pmband").textContent = pm25Band(isFinite(pm)?pm:null);
+  drawMapNote();
+  const adv = ADVICE[b.name] || ["–","–"];
+  $("adv-healthy").innerHTML = `<strong>Healthy persons:</strong> ${adv[0]}`;
+  $("adv-vuln").innerHTML = `<strong>Elderly, children, pregnant women and people with chronic lung or heart disease:</strong> ${adv[1]}`;
+}
+
+function drawWeather(){
+  const w = state.weather?.[0]?.current;
+  if(w){
+    $("sg-temp").textContent = `${fmt(w.temperature_2m,1)}°`;
+    $("sg-cond").textContent = WMO[w.weather_code] || "–";
+    $("sg-feel").textContent = `${fmt(w.apparent_temperature,1)}°C`;
+    $("sg-hum").textContent = `${fmt(w.relative_humidity_2m)}%`;
+    $("sg-wind").textContent = `${fmt(w.wind_speed_10m)} km/h ${compass(w.wind_direction_10m)}`;
+    $("sg-vis").textContent = w.visibility!=null ? `${fmt(w.visibility/1000,1)} km` : "–";
+  }
+  const h = state.sgHourly;
+  if(h){
+    $("hours").innerHTML = h.time.map((t,i)=>{
+      const hr = new Date(t+":00+08:00").toLocaleTimeString("en-SG",{hour:"numeric",timeZone:"Asia/Singapore"});
+      const rp = h.precipitation_probability?.[i] ?? 0;
+      return `<div class="hour"><span class="t">${i===0?"Now":hr}</span><span class="temp">${fmt(h.temperature_2m[i])}°</span>
+        <span class="muted" style="font-size:.72rem;text-align:center;min-height:2.2em">${WMO[h.weather_code[i]]||""}</span>
+        <div class="rainbar"><i style="width:${rp}%"></i></div><span class="rain">${rp}%</span></div>`;
+    }).join("");
+  } else $("hours").innerHTML = `<span class="muted">Hourly forecast unavailable.</span>`;
+}
+
+function drawCities(){
+  let list = CITIES.map((c,i)=>({c, w:state.weather?.[i]}));
+  if(state.filter !== "all") list = list.filter(x=>x.c.tags.includes(state.filter));
+  $("cities").innerHTML = list.map(({c,w})=>{
+    const cw = w?.current;
+    let haze = "";
+    if(c.id === "sg"){
+      const vals = REGIONS.map(r=>state.psi?.[r]).filter(v=>v!=null);
+      const mx = vals.length ? Math.max(...vals) : null; const b = band(mx, PSI_BANDS);
+      haze = `<span class="pill" style="--c:var(${b.c})">PSI ${fmt(mx)} · ${b.name}</span>`;
+    }
+    let local = "";
+    if(w?.utc_offset_seconds!=null){
+      const d = new Date(Date.now() + w.utc_offset_seconds*1000);
+      local = d.toLocaleTimeString("en-SG",{hour:"numeric",minute:"2-digit",timeZone:"UTC"});
+    }
+    return `<article class="card city">
+      <div class="city-top"><div><h3>${c.name}</h3><span class="muted" style="font-size:.82rem">${c.country}${local?` · ${local}`:""}</span>
+        ${c.hot?`<div class="tag" style="margin-top:4px">Fire hotspot area</div>`:""}</div>
+        <span class="temp">${cw?fmt(cw.temperature_2m)+"°":"–"}</span></div>
+      <div class="row"><span class="muted" style="font-size:.88rem">${cw?(WMO[cw.weather_code]||"–"):"No data"}</span>
+        ${haze}</div>
+      <div class="meta"><span>Wind<b>${cw?fmt(cw.wind_speed_10m)+" km/h":"–"}</b></span><span>Humidity<b>${cw?fmt(cw.relative_humidity_2m)+"%":"–"}</b></span>
+        <span>Visibility<b>${cw?.visibility!=null?fmt(cw.visibility/1000,1)+" km":"–"}</b></span></div>
+    </article>`;
+  }).join("");
+}
+
+function setSrc(id, s, label){
+  const el = $(id); el.querySelector(".dot").className = "dot " + s; el.lastChild.textContent = label;
+}
+
+async function refresh(){
+  const btn = $("refresh"); btn.disabled = true; btn.textContent = "Refreshing…";
+  setSrc("src-nea","loading","NEA PSI"); setSrc("src-om","loading","Open-Meteo");
+  const notes = [];
+  const [nea, om] = await Promise.allSettled([loadNEA(), loadOpenMeteo()]);
+
+  if(nea.status === "fulfilled"){
+    state.neaMode = "live"; state.neaData = nea.value; state.psi = nea.value.psi; setSrc("src-nea","live","NEA PSI · live");
+  } else {
+    state.neaMode = "error"; state.neaData = {}; state.psi = null; setSrc("src-nea","sample","NEA PSI · unavailable");
+    notes.push("Live haze readings from NEA could not be loaded. Try Refresh in a moment.");
+  }
+  if(om.status === "fulfilled"){
+    state.weather = om.value.weather; state.sgHourly = om.value.hourly; setSrc("src-om","live","Open-Meteo weather · live");
+  } else {
+    setSrc("src-om","sample","Open-Meteo · unavailable");
+    notes.push("Open-Meteo could not be reached, so weather is blank.");
+  }
+  if(!state.selected){ const p = state.psi || {}; state.selected = REGIONS.reduce((a,r)=>(p[r]??-1)>(p[a]??-1)?r:a, "central"); }
+  $("notice").hidden = !notes.length; $("notice").textContent = notes.join(" ");
+  drawSummary(); drawLegend(); drawMap(); drawRegions(); drawWeather(); drawCities();
+  $("foot-time").textContent = `Last refreshed ${new Date().toLocaleTimeString("en-SG",{timeZone:"Asia/Singapore",hour:"numeric",minute:"2-digit"})} SGT · refreshes every 10 minutes.`;
+  btn.disabled = false; btn.textContent = "Refresh";
+}
+
+document.querySelectorAll(".chip").forEach(ch => ch.addEventListener("click", () => {
+  state.filter = ch.dataset.f; document.querySelectorAll(".chip[data-f]").forEach(c=>c.setAttribute("aria-pressed", c===ch));
+  drawCities();
+}));
+$("refresh").addEventListener("click", refresh);
+
+drawLegend(); drawMap(); drawRegions(); drawCities();
+refresh();
+setInterval(refresh, 10*60*1000);
+})();
+</script>
+</body>
+</html>
